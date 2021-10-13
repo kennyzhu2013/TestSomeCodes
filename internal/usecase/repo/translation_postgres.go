@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/evrone/go-clean-template/internal/entity"
-	"github.com/evrone/go-clean-template/pkg/postgres"
+	"github.com/evrone/go-clean-template/pkg/mysql"
 )
 
 const _defaultEntityCap = 64
@@ -13,11 +13,11 @@ const _defaultEntityCap = 64
 // A repository is an abstract storage (database) that business logic works with.
 // TranslationRepo -.
 type TranslationRepo struct {
-	*postgres.Postgres
+	*mysql.Mysql
 }
 
 // New -.
-func New(pg *postgres.Postgres) *TranslationRepo {
+func New(pg *mysql.Mysql) *TranslationRepo {
 	return &TranslationRepo{pg}
 }
 
@@ -31,7 +31,8 @@ func (r *TranslationRepo) GetHistory(ctx context.Context) ([]entity.Translation,
 		return nil, fmt.Errorf("TranslationRepo - GetHistory - r.Builder: %w", err)
 	}
 
-	rows, err := r.Pool.Query(ctx, sql)
+	rows, err := r.Db.QueryContext(ctx, sql)
+	// rows, err := r.Pool.Query(ctx, sql)
 	if err != nil {
 		return nil, fmt.Errorf("TranslationRepo - GetHistory - r.Pool.Query: %w", err)
 	}
@@ -64,7 +65,7 @@ func (r *TranslationRepo) Store(ctx context.Context, t entity.Translation) error
 		return fmt.Errorf("TranslationRepo - Store - r.Builder: %w", err)
 	}
 
-	_, err = r.Pool.Exec(ctx, sql, args...)
+	_, err = r.Db.ExecContext(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("TranslationRepo - Store - r.Pool.Exec: %w", err)
 	}

@@ -6,7 +6,7 @@ type (
 		App   `yaml:"app"`
 		HTTP  `yaml:"http"`
 		Log   `yaml:"logger"`
-		Mysql `yaml:"postgres"`
+		Mysql `yaml:"mysql"`
 		RMQ   `yaml:"rabbitmq"`
 	}
 

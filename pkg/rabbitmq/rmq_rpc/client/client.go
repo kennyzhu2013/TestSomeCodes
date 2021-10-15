@@ -1,16 +1,15 @@
 package client
 
 import (
+	"common/broker"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/streadway/amqp"
-
 	rmqrpc "github.com/evrone/go-clean-template/pkg/rabbitmq/rmq_rpc"
+	"github.com/google/uuid"
 )
 
 // ErrConnectionClosed -.
@@ -34,7 +33,7 @@ type Message struct {
 
 type pendingCall struct {
 	done   chan struct{}
-	status string
+	status string // handler
 	body   []byte
 }
 
@@ -52,7 +51,7 @@ type Client struct {
 }
 
 // New -.
-func New(url, serverExchange, clientExchange string, opts ...Option) (*Client, error) {
+func New(url, serverExchange, clientExchange, topic string, opts ...Option) (*Client, error) {
 	cfg := rmqrpc.Config{
 		URL:      url,
 		WaitTime: _defaultWaitTime,
@@ -60,7 +59,7 @@ func New(url, serverExchange, clientExchange string, opts ...Option) (*Client, e
 	}
 
 	c := &Client{
-		conn:           rmqrpc.New(clientExchange, cfg),
+		conn:           rmqrpc.New(clientExchange, topic, cfg),
 		serverExchange: serverExchange,
 		error:          make(chan error),
 		stop:           make(chan struct{}),
@@ -96,14 +95,25 @@ func (c *Client) publish(corrID, handler string, request interface{}) error {
 		}
 	}
 
-	err = c.conn.Channel.Publish(c.serverExchange, "", false, false,
-		amqp.Publishing{
-			ContentType:   "application/json",
-			CorrelationId: corrID,
-			ReplyTo:       c.conn.ConsumerExchange,
-			Type:          handler,
-			Body:          requestBody,
-		})
+	// use generated id for message
+	msg := &broker.Message{
+		Header: map[string]string{
+			rmqrpc.MessageCorId: corrID,
+			rmqrpc.MessageType: handler,
+		},
+		Body: requestBody,
+	}
+
+	// key = topic.
+	//err = c.conn.Channel.Publish(c.serverExchange, "", false, false,
+	//	amqp.Publishing{
+	//		ContentType:   "application/json",
+	//		CorrelationId: corrID,
+	//		ReplyTo:       c.conn.ConsumerExchange,
+	//		Type:          handler,
+	//		Body:          requestBody,
+	//	})
+	err = c.conn.RbBroker.Publish(c.conn.Topic, msg)
 	if err != nil {
 		return fmt.Errorf("c.Channel.Publish: %w", err)
 	}
@@ -121,7 +131,7 @@ func (c *Client) RemoteCall(handler string, request, response interface{}) error
 			return ErrConnectionClosed
 		default:
 		}
-	default:
+		default:
 	}
 
 	corrID := uuid.New().String()
@@ -173,9 +183,7 @@ func (c *Client) consumer() {
 
 				return
 			}
-
-			_ = d.Ack(false) //nolint:errcheck // don't need this
-
+			// _ = d.Ack(false) //nolint:errcheck // don't need this
 			c.getCall(&d)
 		}
 	}
@@ -197,16 +205,16 @@ func (c *Client) reconnect() {
 	go c.consumer()
 }
 
-func (c *Client) getCall(d *amqp.Delivery) {
+func (c *Client) getCall(d *broker.Message) {
 	c.RLock()
-	call, ok := c.calls[d.CorrelationId]
+	call, ok := c.calls[d.Header[rmqrpc.MessageCorId]]
 	c.RUnlock()
 
 	if !ok {
 		return
 	}
 
-	call.status = d.Type
+	call.status = d.Header[rmqrpc.MessageType] // d.Type.
 	call.body = d.Body
 	close(call.done)
 }
@@ -239,7 +247,7 @@ func (c *Client) Shutdown() error {
 	close(c.stop)
 	time.Sleep(c.timeout)
 
-	err := c.conn.Connection.Close()
+	err := c.conn.RbBroker.Disconnect() // shutdown
 	if err != nil {
 		return fmt.Errorf("rmq_rpc client - Client - Shutdown - c.Connection.Close: %w", err)
 	}

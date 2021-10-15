@@ -101,7 +101,7 @@ func TestHTTPHistory(t *testing.T) {
 
 // RabbitMQ RPC Client: getHistory.
 func TestRMQClientRPC(t *testing.T) {
-	rmqClient, err := client.New(rmqURL, rpcServerExchange, rpcClientExchange)
+	rmqClient, err := client.New(rmqURL, rpcServerExchange, rpcClientExchange, "testHello")
 	if err != nil {
 		t.Fatal("RabbitMQ RPC Client - init error - client.New")
 	}

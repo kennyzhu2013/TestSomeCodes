@@ -3,11 +3,8 @@ package app
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/gin-gonic/gin"
+	"net"
 
 	"github.com/evrone/go-clean-template/config"
 	amqprpc "github.com/evrone/go-clean-template/internal/controller/amqp_rpc"
@@ -39,10 +36,9 @@ func Run(cfg *config.Config) {
 		webapi.New(),
 	)
 
-	// RabbitMQ RPC Server
+	// RabbitMQ RPC Server, for remote call
 	rmqRouter := amqprpc.NewRouter(translationUseCase)
-
-	rmqServer, err := server.New(cfg.RMQ.URL, cfg.RMQ.ServerExchange, rmqRouter, l)
+	rmqServer, err := server.New(cfg.RMQ.URL, cfg.RMQ.ServerExchange, "fanout", rmqRouter, l)
 	if err != nil {
 		l.Fatal(fmt.Errorf("app - Run - rmqServer - server.New: %w", err))
 	}
@@ -50,29 +46,14 @@ func Run(cfg *config.Config) {
 	// HTTP Server
 	handler := gin.New()
 	v1.NewRouter(handler, l, translationUseCase)
-	httpServer := httpserver.New(handler, httpserver.Port(cfg.HTTP.Port))
 
-	// Waiting signal
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
-
-	select {
-	case s := <-interrupt:
-		l.Info("app - Run - signal: " + s.String())
-	case err = <-httpServer.Notify():
-		l.Error(fmt.Errorf("app - Run - httpServer.Notify: %w", err))
-	case err = <-rmqServer.Notify():
-		l.Error(fmt.Errorf("app - Run - rmqServer.Notify: %w", err))
-	}
-
-	// Shutdown
-	err = httpServer.Shutdown()
-	if err != nil {
-		l.Error(fmt.Errorf("app - Run - httpServer.Shutdown: %w", err))
-	}
+	// service info for etcd or no
+	_ = httpserver.NewNoEtcd(handler, net.JoinHostPort("", cfg.HTTP.Port))
 
 	err = rmqServer.Shutdown()
 	if err != nil {
 		l.Error(fmt.Errorf("app - Run - rmqServer.Shutdown: %w", err))
 	}
+
+	l.Info("app - Run - exit ! ")
 }

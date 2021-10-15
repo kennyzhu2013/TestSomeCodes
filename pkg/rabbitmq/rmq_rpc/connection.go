@@ -1,16 +1,22 @@
 package rmqrpc
 
 import (
+	"common/broker"
+	"common/rabbitmq"
 	"fmt"
 	"log"
 	"time"
+)
 
-	"github.com/streadway/amqp"
+const (
+	MessageCorId   = "CorrelationId"
+	MessageType    = "Type"
 )
 
 // Config -.
 type Config struct {
 	URL      string
+	// Topic    string
 	WaitTime time.Duration
 	Attempts int
 }
@@ -18,17 +24,19 @@ type Config struct {
 // Connection -.
 type Connection struct {
 	ConsumerExchange string
+	Topic    string
 	Config
-	Connection *amqp.Connection
-	Channel    *amqp.Channel
-	Delivery   <-chan amqp.Delivery
+	RbBroker broker.Broker
+	Delivery <-chan broker.Message
 }
 
 // New -.
-func New(consumerExchange string, cfg Config) *Connection {
+func New(consumerExchange, topic string, cfg Config) *Connection {
 	conn := &Connection{
 		ConsumerExchange: consumerExchange,
+		Topic:            topic,
 		Config:           cfg,
+		RbBroker:         rabbitmq.NewBroker(),
 	}
 
 	return conn
@@ -54,66 +62,82 @@ func (c *Connection) AttemptConnect() error {
 }
 
 func (c *Connection) connect() error {
-	var err error
 
-	c.Connection, err = amqp.Dial(c.URL)
-	if err != nil {
+	_ = c.RbBroker.Init(broker.Addrs(c.URL), rabbitmq.Exchange(c.ConsumerExchange), rabbitmq.KindExchange(c.Topic)) //topic.
+	if err := c.RbBroker.Connect(); err != nil {
 		return fmt.Errorf("amqp.Dial: %w", err)
 	}
 
-	c.Channel, err = c.Connection.Channel()
-	if err != nil {
-		return fmt.Errorf("c.Connection.Channel: %w", err)
+	//c.Channel, err = c.Connection.Channel()
+	//if err != nil {
+	//	return fmt.Errorf("c.Connection.Channel: %w", err)
+	//}
+	//
+	//// 广播? why?...
+	//err = c.Channel.ExchangeDeclare(
+	//	c.ConsumerExchange,
+	//	"fanout",
+	//	false,
+	//	false,
+	//	false,
+	//	false,
+	//	nil,
+	//)
+	//if err != nil {
+	//	return fmt.Errorf("c.Connection.Channel: %w", err)
+	//}
+	//
+	//queue, err := c.Channel.QueueDeclare(
+	//	"",
+	//	false,
+	//	false,
+	//	true,
+	//	false,
+	//	nil,
+	//)
+	//if err != nil {
+	//	return fmt.Errorf("c.Channel.QueueDeclare: %w", err)
+	//}
+	//
+	//err = c.Channel.QueueBind(
+	//	queue.Name,
+	//	"",
+	//	c.ConsumerExchange,
+	//	false,
+	//	nil,
+	//)
+	//if err != nil {
+	//	return fmt.Errorf("c.Channel.QueueBind: %w", err)
+	//}
+	//
+	//c.Delivery, err = c.Channel.Consume(
+	//	queue.Name,
+	//	"",
+	//	false,
+	//	false,
+	//	false,
+	//	false,
+	//	nil,
+	//)
+	//if err != nil {
+	//	return fmt.Errorf("c.Channel.Consume: %w", err)
+	//}
+	return nil
+}
+
+// pub message directly for test.
+func (c *Connection) pubErrorTest(id string, body []byte) error {
+	// use generated id for message.
+	msg := &broker.Message{
+		Header: map[string]string{
+			MessageType: id,
+		},
+		Body: body,
 	}
 
-	err = c.Channel.ExchangeDeclare(
-		c.ConsumerExchange,
-		"fanout",
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
+	err := c.RbBroker.Publish(c.Topic, msg)
 	if err != nil {
-		return fmt.Errorf("c.Connection.Channel: %w", err)
+		return fmt.Errorf("RbBroker.Publish: %w", err)
 	}
-
-	queue, err := c.Channel.QueueDeclare(
-		"",
-		false,
-		false,
-		true,
-		false,
-		nil,
-	)
-	if err != nil {
-		return fmt.Errorf("c.Channel.QueueDeclare: %w", err)
-	}
-
-	err = c.Channel.QueueBind(
-		queue.Name,
-		"",
-		c.ConsumerExchange,
-		false,
-		nil,
-	)
-	if err != nil {
-		return fmt.Errorf("c.Channel.QueueBind: %w", err)
-	}
-
-	c.Delivery, err = c.Channel.Consume(
-		queue.Name,
-		"",
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		return fmt.Errorf("c.Channel.Consume: %w", err)
-	}
-
 	return nil
 }

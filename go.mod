@@ -3,6 +3,7 @@ module github.com/evrone/go-clean-template
 go 1.17
 
 require (
+    common v0.0.0
 	github.com/Conight/go-googletrans v0.0.0-20200929083318-176776d061cb
 	github.com/Eun/go-hit v0.5.23
 	github.com/Masterminds/squirrel v1.5.0
@@ -47,3 +48,5 @@ require (
 	google.golang.org/grpc v1.41.0 // indirect
 	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3 // indirect
 )
+
+replace common => ../go-common

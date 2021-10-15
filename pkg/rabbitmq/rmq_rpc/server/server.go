@@ -1,11 +1,10 @@
 package server
 
 import (
+	"common/broker"
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"github.com/streadway/amqp"
 
 	"github.com/evrone/go-clean-template/pkg/logger"
 	rmqrpc "github.com/evrone/go-clean-template/pkg/rabbitmq/rmq_rpc"
@@ -15,10 +14,13 @@ const (
 	_defaultWaitTime = 5 * time.Second
 	_defaultAttempts = 10
 	_defaultTimeout  = 2 * time.Second
+
+	_routeMessageKey = "type"
 )
 
 // CallHandler -.
-type CallHandler func(*amqp.Delivery) (interface{}, error)
+// broker.Message
+type CallHandler func(*broker.Message) (interface{}, error)
 
 // Server -.
 type Server struct {
@@ -33,7 +35,7 @@ type Server struct {
 }
 
 // New -.
-func New(url, serverExchange string, router map[string]CallHandler, l logger.Interface, opts ...Option) (*Server, error) {
+func New(url, serverExchange, newTopic string, router map[string]CallHandler, l logger.Interface, opts ...Option) (*Server, error) {
 	cfg := rmqrpc.Config{
 		URL:      url,
 		WaitTime: _defaultWaitTime,
@@ -41,7 +43,7 @@ func New(url, serverExchange string, router map[string]CallHandler, l logger.Int
 	}
 
 	s := &Server{
-		conn:    rmqrpc.New(serverExchange, cfg),
+		conn:    rmqrpc.New(serverExchange, newTopic, cfg),
 		error:   make(chan error),
 		stop:    make(chan struct{}),
 		router:  router,
@@ -60,7 +62,6 @@ func New(url, serverExchange string, router map[string]CallHandler, l logger.Int
 	}
 
 	go s.consumer()
-
 	return s, nil
 }
 
@@ -75,16 +76,13 @@ func (s *Server) consumer() {
 
 				return
 			}
-
-			_ = d.Ack(false) //nolint:errcheck // don't need this
-
 			s.serveCall(&d)
 		}
 	}
 }
 
-func (s *Server) serveCall(d *amqp.Delivery) {
-	callHandler, ok := s.router[d.Type]
+func (s *Server) serveCall(d *broker.Message) {
+	callHandler, ok := s.router[d.Header[_routeMessageKey]]
 	if !ok {
 		s.publish(d, nil, rmqrpc.ErrBadHandler.Error())
 
@@ -108,14 +106,12 @@ func (s *Server) serveCall(d *amqp.Delivery) {
 	s.publish(d, body, rmqrpc.Success)
 }
 
-func (s *Server) publish(d *amqp.Delivery, body []byte, status string) {
-	err := s.conn.Channel.Publish(d.ReplyTo, "", false, false,
-		amqp.Publishing{
-			ContentType:   "application/json",
-			CorrelationId: d.CorrelationId,
-			Type:          status,
-			Body:          body,
-		})
+func (s *Server) publish(d *broker.Message, body []byte, status string) {
+	message := *d
+	message.Header[rmqrpc.MessageType] = status
+	message.Body = body
+
+	err := s.conn.RbBroker.Publish(s.conn.Topic, &message)
 	if err != nil {
 		s.logger.Error(err, "rmq_rpc server - Server - publish - s.conn.Channel.Publish")
 	}
@@ -153,7 +149,7 @@ func (s *Server) Shutdown() error {
 	close(s.stop)
 	time.Sleep(s.timeout)
 
-	err := s.conn.Connection.Close()
+	err := s.conn.RbBroker.Disconnect() // Connection.Close()
 	if err != nil {
 		return fmt.Errorf("rmq_rpc server - Server - Shutdown - s.Connection.Close: %w", err)
 	}

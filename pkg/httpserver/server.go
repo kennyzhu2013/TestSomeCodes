@@ -2,66 +2,59 @@
 package httpserver
 
 import (
-	"context"
-	"net/http"
-	"time"
+	"common/monitor"
+	"common/registry"
+	"common/service-wrapper"
+	"fmt"
+	"github.com/gin-gonic/gin"
 )
 
 const (
-	_defaultReadTimeout     = 5 * time.Second
-	_defaultWriteTimeout    = 5 * time.Second
 	_defaultAddr            = ":80"
-	_defaultShutdownTimeout = 3 * time.Second
+)
+
+var (
+	// for etcd .
+	Service = &registry.Service{
+		Name: "go.micro.api.media-proxy",
+		Metadata: map[string]string{
+			"serverDescription": "audio recording proxy service", // server desc.
+		},
+		Nodes: []*registry.Node{
+			{
+				Id:      "go.micro.api.media-proxy-",
+				Address: "localhost",
+				Port:    8400,
+				Metadata: map[string]string{
+					"serverTag":           "media-proxy", // server division.
+					monitor.ServiceStatus: monitor.DeleteState,
+				},
+			},
+		},
+		Version: "2",
+	}
 )
 
 // Server -.
 type Server struct {
-	server          *http.Server
-	notify          chan error
-	shutdownTimeout time.Duration
+	service        service_wrapper.Service
 }
 
 // New -.
-func New(handler http.Handler, opts ...Option) *Server {
-	httpServer := &http.Server{
-		Handler:      handler,
-		ReadTimeout:  _defaultReadTimeout,
-		WriteTimeout: _defaultWriteTimeout,
-		Addr:         _defaultAddr,
+// use self HttpServer.
+func NewNoEtcd(handler *gin.Engine, address string) *Server {
+	service := service_wrapper.NewService(service_wrapper.Address(address),
+		service_wrapper.Engine(handler))
+	// for test no etcd.
+	// service_wrapper.ServiceInfo(Service))
+	// service_wrapper.RegisterInterval(monitor.HeartBeatCheck)) , service_wrapper.Registry(registry.DefaultRegistry)) no etcd
+	if err := service.Run(); err != nil {
+		_ = fmt.Errorf("service StartFail:%v", err)
 	}
-
-	s := &Server{
-		server:          httpServer,
-		notify:          make(chan error, 1),
-		shutdownTimeout: _defaultShutdownTimeout,
-	}
-
-	// Custom options
-	for _, opt := range opts {
-		opt(s)
-	}
-
-	s.start()
-
-	return s
-}
-
-func (s *Server) start() {
-	go func() {
-		s.notify <- s.server.ListenAndServe()
-		close(s.notify)
-	}()
-}
-
-// Notify -.
-func (s *Server) Notify() <-chan error {
-	return s.notify
+	return &Server{ service }
 }
 
 // Shutdown -.
 func (s *Server) Shutdown() error {
-	ctx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
-	defer cancel()
-
-	return s.server.Shutdown(ctx)
+	return  s.service.Shutdown()
 }

@@ -2,6 +2,7 @@
 package app
 
 import (
+	log "common/log/newlog"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"net"
@@ -21,12 +22,12 @@ import (
 // https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html.
 // Run creates objects via constructors.
 func Run(cfg *config.Config) {
-	l := logger.New(cfg.Log.Level)
+	logger.Init(cfg.Log.Level)
 
 	// Repository
 	pg, err := mysql.New(cfg.Mysql.URL, mysql.MaxPoolSize(cfg.Mysql.PoolMax))
 	if err != nil {
-		l.Fatal(fmt.Errorf("app - Run - postgres.New: %w", err))
+		log.Fatal(fmt.Errorf("app - Run - postgres.New: %w", err))
 	}
 	defer pg.Close()
 
@@ -38,22 +39,22 @@ func Run(cfg *config.Config) {
 
 	// RabbitMQ RPC Server, for remote call
 	rmqRouter := amqprpc.NewRouter(translationUseCase)
-	rmqServer, err := server.New(cfg.RMQ.URL, cfg.RMQ.ServerExchange, "fanout", rmqRouter, l)
+	rmqServer, err := server.New(cfg.RMQ.URL, cfg.RMQ.ServerExchange, "fanout", rmqRouter, log.GetLogger())
 	if err != nil {
-		l.Fatal(fmt.Errorf("app - Run - rmqServer - server.New: %w", err))
+		log.Fatal(fmt.Errorf("app - Run - rmqServer - server.New: %w", err))
 	}
 
 	// HTTP Server
 	handler := gin.New()
-	v1.NewRouter(handler, l, translationUseCase)
+	v1.NewRouter(handler, log.GetLogger(), translationUseCase)
 
 	// service info for etcd or no
-	_ = httpserver.NewNoEtcd(handler, l, net.JoinHostPort("", cfg.HTTP.Port))
+	_ = httpserver.NewNoEtcd(handler, log.GetLogger(), net.JoinHostPort("", cfg.HTTP.Port))
 
 	err = rmqServer.Shutdown()
 	if err != nil {
-		l.Error(fmt.Errorf("app - Run - rmqServer.Shutdown: %w", err))
+		log.Error(fmt.Errorf("app - Run - rmqServer.Shutdown: %w", err))
 	}
 
-	l.Info("app - Run - exit ! ")
+	log.Info("app - Run - exit ! ")
 }

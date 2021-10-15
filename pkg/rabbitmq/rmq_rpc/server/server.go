@@ -2,11 +2,11 @@ package server
 
 import (
 	"common/broker"
+	log "common/log/newlog"
 	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/evrone/go-clean-template/pkg/logger"
 	rmqrpc "github.com/evrone/go-clean-template/pkg/rabbitmq/rmq_rpc"
 )
 
@@ -31,11 +31,11 @@ type Server struct {
 
 	timeout time.Duration
 
-	logger logger.Interface
+	logger log.Logger
 }
 
 // New -.
-func New(url, serverExchange, newTopic string, router map[string]CallHandler, l logger.Interface, opts ...Option) (*Server, error) {
+func New(url, serverExchange, newTopic string, router map[string]CallHandler, l log.Logger, opts ...Option) (*Server, error) {
 	cfg := rmqrpc.Config{
 		URL:      url,
 		WaitTime: _defaultWaitTime,

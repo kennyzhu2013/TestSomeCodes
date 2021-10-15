@@ -1,5 +1,5 @@
 /.idea/
 .env
 .vscode
-go.sum
+/go.sum
 

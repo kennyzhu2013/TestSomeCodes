@@ -48,7 +48,7 @@ func Run(cfg *config.Config) {
 	v1.NewRouter(handler, l, translationUseCase)
 
 	// service info for etcd or no
-	_ = httpserver.NewNoEtcd(handler, net.JoinHostPort("", cfg.HTTP.Port))
+	_ = httpserver.NewNoEtcd(handler, l, net.JoinHostPort("", cfg.HTTP.Port))
 
 	err = rmqServer.Shutdown()
 	if err != nil {

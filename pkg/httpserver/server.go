@@ -6,6 +6,7 @@ import (
 	"common/registry"
 	"common/service-wrapper"
 	"fmt"
+	"github.com/evrone/go-clean-template/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -42,7 +43,7 @@ type Server struct {
 
 // New -.
 // use self HttpServer.
-func NewNoEtcd(handler *gin.Engine, address string) *Server {
+func NewNoEtcd(handler *gin.Engine, l logger.Interface, address string) *Server {
 	service := service_wrapper.NewService(service_wrapper.Address(address),
 		service_wrapper.Engine(handler))
 	// for test no etcd.
@@ -50,6 +51,7 @@ func NewNoEtcd(handler *gin.Engine, address string) *Server {
 	// service_wrapper.RegisterInterval(monitor.HeartBeatCheck)) , service_wrapper.Registry(registry.DefaultRegistry)) no etcd
 	if err := service.Run(); err != nil {
 		_ = fmt.Errorf("service StartFail:%v", err)
+		l.Error("service StartFail:%v", err)
 	}
 	return &Server{ service }
 }

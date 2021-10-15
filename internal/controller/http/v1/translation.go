@@ -1,21 +1,21 @@
 package v1
 
 import (
+	log "common/log/newlog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/evrone/go-clean-template/internal/entity"
 	"github.com/evrone/go-clean-template/internal/usecase"
-	"github.com/evrone/go-clean-template/pkg/logger"
 )
 
 type translationRoutes struct {
 	t usecase.Translation
-	l logger.Interface
+	l log.Logger
 }
 
-func newTranslationRoutes(handler *gin.RouterGroup, t usecase.Translation, l logger.Interface) {
+func newTranslationRoutes(handler *gin.RouterGroup, t usecase.Translation, l log.Logger) {
 	r := &translationRoutes{t, l}
 
 	h := handler.Group("/translation")

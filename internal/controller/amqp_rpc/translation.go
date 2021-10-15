@@ -1,10 +1,9 @@
 package amqprpc
 
 import (
+	"common/broker"
 	"context"
 	"fmt"
-
-	"github.com/streadway/amqp"
 
 	"github.com/evrone/go-clean-template/internal/entity"
 	"github.com/evrone/go-clean-template/internal/usecase"
@@ -27,7 +26,7 @@ type historyResponse struct {
 }
 
 func (r *translationRoutes) getHistory() server.CallHandler {
-	return func(d *amqp.Delivery) (interface{}, error) {
+	return func(d *broker.Message) (interface{}, error) {
 		translations, err := r.translationUseCase.History(context.Background())
 		if err != nil {
 			return nil, fmt.Errorf("amqp_rpc - translationRoutes - getHistory - r.translationUseCase.History: %w", err)
